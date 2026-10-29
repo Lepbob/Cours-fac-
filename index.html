@@ -140,6 +140,9 @@ select.field,input.field,textarea.field{border:1px solid var(--line);background:
 .ev b{font-weight:600;overflow-wrap:anywhere}
 .ev .t{font-family:var(--mono);font-size:11.5px;opacity:.85}
 .ev.flag{border:1px dashed currentColor;background:none}
+.ev.plan{border:1.5px dashed var(--accent);background:var(--accent-soft);color:var(--fg)}
+.load{font-family:var(--mono);font-size:12px;color:var(--muted);padding:0 2px}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .ev.past{opacity:.5}
 .weeknav{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 
@@ -256,6 +259,8 @@ a.google-btn,a.icon-btn{text-decoration:none}
     sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/>',
     tick:'<path d="M5 12l5 5 9-10"/>',
     gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3 1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8 1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/>',
+    x:'<path d="M6 6l12 12M18 6L6 18"/>',
+    edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
     refresh:'<path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
     left:'<path d="M15 5l-7 7 7 7"/>',right:'<path d="M9 5l7 7-7 7"/>',
     g:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/>'
@@ -336,14 +341,24 @@ a.google-btn,a.icon-btn{text-decoration:none}
       return parse(a.date,a.time||'23:59')-parse(b.date,b.time||'23:59');
     });
   }
+  var KINDS=[['devoir','Devoir'],['rendu','Rendu'],['cc','Contrôle continu'],['exam','Examen']];
+  var KIND_TAG={rendu:['Rendu','blue'],cc:['Contrôle continu','orange'],exam:['Examen','red']};
+  var KIND_FLAG={devoir:'À rendre',rendu:'Rendu',cc:'Contrôle',exam:'Examen'};
+  var KIND_SUM={devoir:'Devoir',rendu:'Rendu',cc:'Contrôle continu',exam:'Examen'};
+  var DURS=[[0,'Non précisée'],[15,'15 min'],[30,'30 min'],[45,'45 min'],[60,'1 h'],[90,'1 h 30'],[120,'2 h'],[180,'3 h'],[240,'4 h'],[360,'6 h']];
+  function fmtDur(m){m=+m||0;if(m<60)return m+' min';return Math.floor(m/60)+' h'+(m%60?' '+pad(m%60):'')}
+  function optList(list,sel){return list.map(function(o){return '<option value="'+o[0]+'"'+(String(o[0])===String(sel)?' selected':'')+'>'+esc(o[1])+'</option>'}).join('')}
   function hwRow(h){
-    var c=countdown(h),p=PRIO[h.prio]||PRIO.mid,when=fmtDay.format(parse(h.date))+(h.time?', '+h.time:'');
+    var c=countdown(h),p=PRIO[h.prio]||PRIO.mid,when=fmtDay.format(parse(h.date))+(h.time?', '+h.time:''),kt=KIND_TAG[h.kind];
+    var plan=(!h.done&&h.planDate)?'<span>Prévu : '+esc(fmtDay.format(parse(h.planDate))+(h.planTime?', '+h.planTime:''))+'</span>':'';
     return '<div class="row'+(h.done?' done':'')+'">'+
       '<button class="check" data-act="toggle-hw" data-id="'+h.id+'" aria-label="'+(h.done?'Marquer à faire':'Marquer rendu')+'">'+icon('tick',12)+'</button>'+
       '<div class="main-cell"><div class="title">'+esc(h.title)+'</div>'+
-        '<div class="meta">'+subTag(h.sub)+'<span class="tag t-'+p.c+'">'+p.l+'</span><span class="mono">'+esc(when)+'</span>'+
+        '<div class="meta">'+subTag(h.sub)+(kt?'<span class="tag t-'+kt[1]+'">'+kt[0]+'</span>':'')+'<span class="tag t-'+p.c+'">'+p.l+'</span><span class="mono">'+esc(when)+'</span>'+
+        (h.dur?'<span>Durée visée : '+fmtDur(h.dur)+'</span>':'')+plan+
         (h.remind&&h.remind!=='none'&&!h.done?'<span>Rappel : '+REMIND[h.remind].toLowerCase()+'</span>':'')+'</div></div>'+
       '<div class="side-cell"><span class="pill '+c.cls+'">'+esc(c.label)+'</span>'+
+      '<button class="icon-btn" data-act="edit-hw" data-id="'+h.id+'" aria-label="Modifier">'+icon('edit',16)+'</button>'+
       '<button class="icon-btn" data-act="del-hw" data-id="'+h.id+'" aria-label="Supprimer">'+icon('trash',16)+'</button></div></div>';
   }
   function absRow(a){
@@ -394,10 +409,12 @@ a.google-btn,a.icon-btn{text-decoration:none}
         return '<div class="'+cls+'"><div class="time">'+e.a+' – '+e.b+'</div><div><span class="tag t-'+e.color+'">'+esc(e.title)+'</span>'+(e.kind?' <span class="mono">'+e.kind+'</span>':'')+(e.room?'<div class="meta" style="color:var(--muted);font-size:13px;margin-top:2px">'+esc(e.room)+'</div>':'')+'</div></div>';
       }).join('');
     }
+    var plannedToday=state.homework.filter(function(h){return !h.done&&h.planDate===iso(now)}).sort(function(a,b){return (a.planTime||'99')<(b.planTime||'99')?-1:1}),plannedTot=plannedToday.reduce(function(t,h){return t+(+h.dur||0)},0);
     var next=sortedHw(openHw()).slice(0,5).map(hwRow).join('')||'<div class="empty">Rien à rendre pour le moment.</div>';
     var abs=openAbs().map(absRow).join('')||'<div class="empty">Rien à rattraper, bravo.</div>';
     html+='<div class="cols">'+
       '<div class="section wide"><h2>Cours du jour</h2><div class="rows" style="border-top:1px solid var(--line)">'+cours+'</div></div>'+
+      (plannedToday.length?'<div class="section wide"><h2>Prévu aujourd\'hui <span class="count">'+plannedToday.length+(plannedTot?' · '+fmtDur(plannedTot):'')+'</span></h2><div class="rows">'+plannedToday.map(hwRow).join('')+'</div></div>':'')+
       '<div class="section wide"><h2>Prochaines échéances <span class="count">'+openHw().length+'</span></h2><div class="rows">'+next+'</div></div>'+
       '<div class="section wide"><h2>À rattraper <span class="count">'+openAbs().length+'</span></h2><div class="rows">'+abs+'</div></div></div>';
     return html;
@@ -531,9 +548,14 @@ a.google-btn,a.icon-btn{text-decoration:none}
         return '<div class="ev t-'+e.color+(past?' past':'')+'"><span class="t">'+e.a+' – '+e.b+(e.kind?' · '+e.kind:'')+'</span><b>'+esc(e.title)+'</b>'+(e.room?'<span class="t">'+esc(e.room)+'</span>':'')+'</div>';
       }).join('');
       var flags=state.homework.filter(function(h){return h.date===di&&!h.done}).map(function(h){
-        return '<div class="ev flag t-red"><span class="t">Rendu '+esc(h.time||'')+'</span><b>'+esc(h.title)+'</b></div>';
+        return '<div class="ev flag t-red"><span class="t">'+(KIND_FLAG[h.kind]||'À rendre')+' '+esc(h.time||'')+'</span><b>'+esc(h.title)+'</b></div>';
       }).join('');
-      cols+='<div class="day'+(isToday?' today':'')+'"><div class="day-head">'+DAYS[k]+'<span>'+fmtShort.format(day)+'</span></div>'+evs+flags+'</div>';
+      var planned=state.homework.filter(function(h){return h.planDate===di&&!h.done}).sort(function(a,b){return (a.planTime||'99')<(b.planTime||'99')?-1:1});
+      var load=planned.reduce(function(t,h){return t+(+h.dur||0)},0);
+      var plans=planned.map(function(h){
+        return '<div class="ev plan"><span class="t">À faire'+(h.planTime?' · '+h.planTime:'')+(h.dur?' · '+fmtDur(h.dur):'')+'</span><b>'+esc(h.title)+'</b><span class="t">'+esc(sub(h.sub).name)+'</span></div>';
+      }).join('');
+      cols+='<div class="day'+(isToday?' today':'')+'"><div class="day-head">'+DAYS[k]+'<span>'+fmtShort.format(day)+'</span></div>'+(load?'<div class="load">Prévu : '+fmtDur(load)+'</div>':'')+evs+flags+plans+'</div>';
     }
     var subt=loading?'Chargement de ton calendrier…':(calNotice()||'Lu depuis ton calendrier de la fac dans Google Agenda.');
     return sampleBanner()+head('Planning',subt)+
@@ -785,7 +807,7 @@ a.google-btn,a.icon-btn{text-decoration:none}
           var due=dueOf(h),mins=[remindMinutes(h,due)];
           if(mins.indexOf(60)<0)mins.push(60);
           return gapi('/calendars/primary/events','POST',{
-            summary:'Rendu : '+h.title+' ('+sub(h.sub).name+')',
+            summary:(KIND_SUM[h.kind||'devoir'])+' : '+h.title+' ('+sub(h.sub).name+')',
             description:'Ajouté depuis Studia',
             start:{dateTime:due.toISOString()},
             end:{dateTime:new Date(due.getTime()+15*6e4).toISOString()},
@@ -851,30 +873,40 @@ a.google-btn,a.icon-btn{text-decoration:none}
   }
 
   /* ---------- Ajout rapide ---------- */
-  var modalMode='hw';
+  var modalMode='hw',editId='';
   function subjectOptions(sel){return state.subjects.map(function(s){return '<option value="'+s.id+'"'+(s.id===sel?' selected':'')+'>'+esc(s.name)+'</option>'}).join('')}
-  function openModal(mode){
+  function openModal(mode,id){
     modalMode=mode||(view==='absences'?'abs':'hw');
-    var tomorrow=iso(addDays(new Date(),1)),today=iso(new Date());
-    var isHw=modalMode==='hw';
+    editId=(modalMode==='hw'&&id)?id:'';
+    var h=editId?state.homework.filter(function(x){return x.id===editId})[0]:null;
+    if(editId&&!h)editId='';
+    var v=h||{},tomorrow=iso(addDays(new Date(),1)),today=iso(new Date());
+    var isHw=modalMode==='hw',durs=DURS.slice();
+    if(v.dur&&!durs.some(function(d){return d[0]===v.dur}))durs.push([v.dur,fmtDur(v.dur)]);
     var body=isHw?
-      '<label>Titre<input class="field" id="f-title" required placeholder="Ex. Fiche de lecture" autocomplete="off"></label>'+
-      '<div class="two"><label>Matière<select class="field" id="f-sub">'+subjectOptions()+'</select></label>'+
-      '<label>Priorité<select class="field" id="f-prio"><option value="high">Haute</option><option value="mid" selected>Moyenne</option><option value="low">Basse</option></select></label></div>'+
-      '<div class="two"><label>Date limite<input class="field" type="date" id="f-date" required value="'+tomorrow+'"></label>'+
-      '<label>Heure<input class="field" type="time" id="f-time" value="23:59"></label></div>'+
-      '<label>Rappel<select class="field" id="f-remind"><option value="eve">La veille</option><option value="d3">3 jours avant</option><option value="same">Le matin même</option><option value="none">Aucun rappel</option></select></label>'+
+      '<label>Titre<input class="field" id="f-title" required placeholder="Ex. Fiche de lecture" autocomplete="off" value="'+esc(v.title||'')+'"></label>'+
+      '<div class="two"><label>Type<select class="field" id="f-kind">'+optList(KINDS,v.kind||'devoir')+'</select></label>'+
+      '<label>Matière<select class="field" id="f-sub">'+subjectOptions(v.sub)+'</select></label></div>'+
+      '<div class="two"><label>Date limite<input class="field" type="date" id="f-date" required value="'+esc(v.date||tomorrow)+'"></label>'+
+      '<label>Heure<input class="field" type="time" id="f-time" value="'+esc(v.time||'23:59')+'"></label></div>'+
+      '<div class="two"><label>Priorité<select class="field" id="f-prio">'+optList([['high','Haute'],['mid','Moyenne'],['low','Basse']],v.prio||'mid')+'</select></label>'+
+      '<label>Durée visée<select class="field" id="f-dur">'+optList(durs,v.dur||0)+'</select></label></div>'+
+      '<div class="two"><label>Je m\'y mets le<input class="field" type="date" id="f-pdate" value="'+esc(v.planDate||'')+'"></label>'+
+      '<label>À<input class="field" type="time" id="f-ptime" value="'+esc(v.planTime||'')+'"></label></div>'+
+      '<p class="hint">Laisse « Je m\'y mets le » vide si tu n\'as pas encore décidé quand t\'y mettre. Le travail prévu apparaît dans le Planning.</p>'+
+      '<label>Rappel<select class="field" id="f-remind">'+optList([['eve','La veille'],['d3','3 jours avant'],['same','Le matin même'],['none','Aucun rappel']],v.remind||'eve')+'</select></label>'+
       '<p class="hint">Une fois connecté à Google, l\'alerte sera créée dans ton agenda principal.</p>':
       '<div class="two"><label>Matière<select class="field" id="f-sub">'+subjectOptions()+'</select></label>'+
       '<label>Date du cours manqué<input class="field" type="date" id="f-date" required value="'+today+'"></label></div>'+
       '<label>À récupérer<input class="field" id="f-what" required placeholder="Ex. Notes du cours et diapos" autocomplete="off"></label>'+
       '<label>Qui a les notes ?<input class="field" id="f-who" placeholder="Nom d\'un camarade" autocomplete="off"></label>';
+    var head=editId?'Modifier le devoir':'Ajout rapide';
     document.getElementById('modal-root').innerHTML=
-      '<div class="overlay" data-act="close-bg"><form class="modal" id="add-form" role="dialog" aria-modal="true" aria-label="Ajout rapide">'+
-      '<h2>Ajout rapide</h2>'+
-      '<div class="seg" role="group" aria-label="Type"><button type="button" data-act="mode" data-v="hw" aria-pressed="'+isHw+'">Devoir</button><button type="button" data-act="mode" data-v="abs" aria-pressed="'+!isHw+'">Absence</button></div>'+
+      '<div class="overlay"><form class="modal" id="add-form" role="dialog" aria-modal="true" aria-label="'+head+'">'+
+      '<div class="modal-head"><h2>'+head+'</h2><button type="button" class="icon-btn" data-act="close" aria-label="Fermer">'+icon('x',20)+'</button></div>'+
+      (editId?'':'<div class="seg" role="group" aria-label="Type"><button type="button" data-act="mode" data-v="hw" aria-pressed="'+isHw+'">Devoir</button><button type="button" data-act="mode" data-v="abs" aria-pressed="'+!isHw+'">Absence</button></div>')+
       '<div class="form">'+body+'</div>'+
-      '<div class="form-actions"><button type="button" class="btn" data-act="close">Annuler</button><button type="submit" class="btn btn-primary">Ajouter</button></div></form></div>';
+      '<div class="form-actions"><button type="button" class="btn" data-act="close">Annuler</button><button type="submit" class="btn btn-primary">'+(editId?'Enregistrer':'Ajouter')+'</button></div></form></div>';
     var first=document.getElementById(isHw?'f-title':'f-what');if(first)first.focus();
   }
   function closeModal(){document.getElementById('modal-root').innerHTML=''}
@@ -884,7 +916,15 @@ a.google-btn,a.icon-btn{text-decoration:none}
     e.preventDefault();
     var v=function(id){var el=document.getElementById(id);return el?el.value.trim():''};
     if(modalMode==='hw'){
-      state.homework.push({id:uid(),title:v('f-title'),sub:v('f-sub'),date:v('f-date'),time:v('f-time')||'23:59',prio:v('f-prio'),remind:v('f-remind'),done:false});
+      var data={title:v('f-title'),sub:v('f-sub'),kind:v('f-kind')||'devoir',date:v('f-date'),time:v('f-time')||'23:59',prio:v('f-prio'),remind:v('f-remind'),dur:+v('f-dur')||0,planDate:v('f-pdate'),planTime:v('f-pdate')?v('f-ptime'):''};
+      var cur=editId?state.homework.filter(function(x){return x.id===editId})[0]:null;
+      if(cur){
+        var changed=['title','sub','kind','date','time','remind'].some(function(k){return cur[k]!==data[k]});
+        if(changed&&cur.eventId){state.pendingDeletes.push(cur.eventId);cur.eventId=''}
+        Object.keys(data).forEach(function(k){cur[k]=data[k]});
+      }else{
+        data.id=uid();data.done=false;state.homework.push(data);
+      }
     }else{
       state.absences.push({id:uid(),sub:v('f-sub'),date:v('f-date'),what:v('f-what'),who:v('f-who'),state:'todo'});
     }
@@ -895,10 +935,10 @@ a.google-btn,a.icon-btn{text-decoration:none}
   document.addEventListener('click',function(e){
     var el=e.target.closest('[data-act]');if(!el)return;
     var act=el.getAttribute('data-act'),id=el.getAttribute('data-id'),val=el.getAttribute('data-v');
-    if(act==='close-bg'){if(e.target!==el)return;closeModal();return}
     if(act==='add')openModal();
     else if(act==='close')closeModal();
     else if(act==='mode')openModal(val);
+    else if(act==='edit-hw')openModal('hw',id);
     else if(act==='theme')toggleTheme();
     else if(act==='toggle-hw'){state.homework.forEach(function(h){if(h.id===id)h.done=!h.done});afterChange();render()}
     else if(act==='del-hw'){
