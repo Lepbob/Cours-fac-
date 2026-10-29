@@ -225,6 +225,7 @@ a.google-btn,a.icon-btn{text-decoration:none}
 <button class="fab" data-act="add" aria-label="Ajout rapide" id="fab"></button>
 <div id="modal-root"></div>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
@@ -495,18 +496,26 @@ a.google-btn,a.icon-btn{text-decoration:none}
       state.settings.imported=state.settings.schoolCal;
       cloud.importMsg=created?created+' matière'+(created>1?'s':'')+' ajoutée'+(created>1?'s':'')+' depuis ton agenda.':'Aucune nouvelle matière trouvée.';
       save();
-    }).catch(function(e){cloud.calError=friendly(e)}).then(function(){importing=false;calCache={};render()});
+    }).catch(function(e){cloud.calError=friendly(e)}).then(function(){importing=false;resetCal();render()});
   }
   function calReady(){return !!(cloud.user&&tokenOk()&&state.settings.schoolCal)}
   function calNotice(){
+    if(!cloud.user&&!cloud.authReady&&state.settings.schoolCal)return '';
     if(!cloud.user)return state.sample?'Emploi du temps d\'exemple. <a href="#reglages">Connecte-toi</a> pour afficher le calendrier de ta fac.':'<a href="#reglages">Connecte-toi</a> pour afficher le calendrier de ta fac.';
-    if(!tokenOk())return 'L\'accès à Google Agenda a expiré. <button class="linkbtn" data-act="reconnect">Reconnecter</button>';
+    if(!tokenOk())return 'Dernière synchro affichée. <button class="linkbtn" data-act="reconnect">Actualiser</button>';
     if(!state.settings.schoolCal)return 'Choisis le calendrier de ta fac dans <a href="#reglages">Réglages</a>.';
     return cloud.calError?esc(cloud.calError):'';
   }
   function dayEvents(d){
     var di=iso(d),ws=weekStartOf(d);
-    if(calReady()){if(state.settings.imported!==state.settings.schoolCal&&importTried!==state.settings.schoolCal)importSubjects();loadWeek(ws);var c=calCache[iso(ws)];return c?(c[di]||[]):null}
+    var en=calCache[iso(ws)];
+    if(state.settings.schoolCal&&(en||calReady())){
+      if(calReady()){
+        if(state.settings.imported!==state.settings.schoolCal&&importTried!==state.settings.schoolCal)importSubjects();
+        if(!en||Date.now()-en.at>600000)loadWeek(ws);
+      }
+      return en?(en.by[di]||[]):null;
+    }
     if(!cloud.user&&state.sample){
       var wd=(d.getDay()+6)%7;
       return wd>4?[]:SCHEDULE[wd].map(function(e){var u=sub(e.s);return {title:u.name,a:e.a,b:e.b,room:e.r,kind:e.k,color:u.color}});
@@ -591,7 +600,8 @@ a.google-btn,a.icon-btn{text-decoration:none}
           '<p class="hint">Les alertes de deadline sont créées dans ton agenda principal.'+(pend?' '+pend+' devoir'+(pend>1?'s':'')+' en attente d\'ajout à l\'agenda.':' Tous tes devoirs sont à jour dans l\'agenda.')+'</p>'+
           '<div><button class="btn" data-act="sync-now">'+icon('refresh',16)+'Synchroniser maintenant</button></div>';
       }
-      html+='<div class="panel"><h2>Google Agenda</h2>'+body+(cloud.calError?'<div class="err">'+esc(cloud.calError)+'</div>':'')+'</div>';
+      html+='<div class="panel"><h2>Renouvellement automatique</h2><p class="hint">Google coupe l\'accès à l\'agenda au bout d\'une heure. Avec l\'identifiant client Web de ton projet, l\'appli le renouvelle toute seule au premier toucher après l\'ouverture.</p><div class="setrow"><label for="set-gcid">Identifiant client Web</label><input class="field" id="set-gcid" style="flex:1;min-width:200px" placeholder="123456-abc.apps.googleusercontent.com" value="'+esc(state.settings.gClientId||'')+'" autocomplete="off"></div></div>'+
+        '<div class="panel"><h2>Google Agenda</h2>'+body+(cloud.calError?'<div class="err">'+esc(cloud.calError)+'</div>':'')+'</div>';
     }
     return html;
   }
@@ -601,12 +611,16 @@ a.google-btn,a.icon-btn{text-decoration:none}
   var SCOPES=['https://www.googleapis.com/auth/calendar.events','https://www.googleapis.com/auth/calendar.readonly'];
   var TOK_KEY='hubfac-tok';
   var cloud={user:null,authReady:false,status:'local',error:'',calError:'',calList:null,calLoading:false,token:null,tokenExp:0,unsub:null,timer:null,auth:null,db:null,ref:null};
-  var calCache={},calLoading={},syncing=false;
+  var CAL_KEY='hubfac-calcache';
+  var calCache=loadCalCache(),calLoading={},calFail={},syncing=false;
+  function loadCalCache(){try{return JSON.parse(localStorage.getItem(CAL_KEY)||'{}')||{}}catch(e){return {}}}
+  function saveCalCache(){try{localStorage.setItem(CAL_KEY,JSON.stringify(calCache))}catch(e){}}
+  function resetCal(){calCache={};calFail={};saveCalCache()}
 
   function tokenOk(){return !!cloud.token&&Date.now()<cloud.tokenExp}
-  function setToken(t){cloud.token=t;cloud.tokenExp=Date.now()+55*60000;try{sessionStorage.setItem(TOK_KEY,JSON.stringify({t:t,e:cloud.tokenExp}))}catch(e){}}
-  function clearToken(){cloud.token=null;cloud.tokenExp=0;try{sessionStorage.removeItem(TOK_KEY)}catch(e){}}
-  function restoreToken(){try{var r=JSON.parse(sessionStorage.getItem(TOK_KEY)||'null');if(r&&r.e>Date.now()){cloud.token=r.t;cloud.tokenExp=r.e}}catch(e){}}
+  function setToken(t,sec){cloud.token=t;cloud.tokenExp=Date.now()+((sec>0?sec:3600)-120)*1000;try{localStorage.setItem(TOK_KEY,JSON.stringify({t:t,e:cloud.tokenExp}))}catch(e){}}
+  function clearToken(){cloud.token=null;cloud.tokenExp=0;try{localStorage.removeItem(TOK_KEY)}catch(e){}}
+  function restoreToken(){try{var r=JSON.parse(localStorage.getItem(TOK_KEY)||'null');if(r&&r.e>Date.now()){cloud.token=r.t;cloud.tokenExp=r.e}}catch(e){}}
   function friendly(e){
     var c=e&&e.code;
     if(c==='auth/unauthorized-domain')return 'Ce site n\'est pas autorisé. Dans Firebase, ouvre Authentication, Paramètres, Domaines autorisés, puis ajoute l\'adresse de ton site.';
@@ -642,13 +656,42 @@ a.google-btn,a.icon-btn{text-decoration:none}
       render();
     });
   }
+  var gis=null,autoTried=0;
+  function gClientId(){return String(state.settings.gClientId||'').trim()}
+  function gisAvailable(){return !!(gClientId()&&window.google&&google.accounts&&google.accounts.oauth2)}
+  function gisRequest(interactive){
+    if(!gisAvailable()){if(interactive)signIn();return}
+    var cid=gClientId();
+    if(!gis||gis.cid!==cid){
+      gis={cid:cid,client:google.accounts.oauth2.initTokenClient({
+        client_id:cid,scope:SCOPES.join(' '),
+        callback:function(r){
+          if(r&&r.access_token){setToken(r.access_token,+r.expires_in);cloud.calError='';cloud.error='';onTokenReady()}
+          else if(r&&r.error){cloud.error='Google a refusé le renouvellement ('+r.error+').';render()}
+        },
+        error_callback:function(e){
+          if(gis.interactive){
+            if(e&&e.type==='popup_failed_to_open')signIn();
+            else if(e&&e.type!=='popup_closed'){cloud.error='Le renouvellement a échoué. Vérifie l\'identifiant client et les origines autorisées.';render()}
+          }
+        }
+      })};
+    }
+    gis.interactive=!!interactive;
+    gis.client.requestAccessToken({prompt:'',hint:(cloud.user&&cloud.user.email)||undefined});
+  }
+  function renewToken(){if(gisAvailable())gisRequest(true);else signIn()}
+  document.addEventListener('click',function(){
+    if(!cloud.user||tokenOk()||!gisAvailable()||Date.now()-autoTried<5*60000)return;
+    autoTried=Date.now();gisRequest(false);
+  },true);
   function handleCred(r){
     if(r&&r.user&&!cloud.user)cloud.user=r.user;
-    if(r&&r.credential&&r.credential.accessToken){setToken(r.credential.accessToken);cloud.calError='';calCache={};onTokenReady()}
+    if(r&&r.credential&&r.credential.accessToken){setToken(r.credential.accessToken);cloud.calError='';onTokenReady()}
   }
   function signOut(){
     if(!cloud.auth)return;
-    cloud.auth.signOut();clearToken();calCache={};cloud.calList=null;cloud.error='';cloud.calError='';
+    cloud.auth.signOut();clearToken();resetCal();cloud.calList=null;cloud.error='';cloud.calError='';
   }
   function onTokenReady(){loadCalendars();calSync();render()}
 
@@ -665,7 +708,7 @@ a.google-btn,a.icon-btn{text-decoration:none}
       var ru=d.updatedAt||0,lu=state.updatedAt||0;
       if(remote&&ru>lu){
         remote=normalize(remote);remote.updatedAt=ru;
-        state=remote;persistLocal();calCache={};
+        state=remote;persistLocal();resetCal();
       }else if(ru<lu&&!snap.metadata.fromCache){pushNow()}
       render();
     },function(e){cloud.status='error';cloud.error=friendly(e);render()});
@@ -699,11 +742,11 @@ a.google-btn,a.icon-btn{text-decoration:none}
         var m=cloud.calList.filter(function(c){return !c.primary&&/fac|univ|cours|ade|celcat|hyperplanning|edt|emploi/i.test(c.summary)})[0];
         if(m){state.settings.schoolCal=m.id;save()}
       }
-    }).catch(function(e){cloud.calError=friendly(e)}).then(function(){cloud.calLoading=false;calCache={};render()});
+    }).catch(function(e){cloud.calError=friendly(e)}).then(function(){cloud.calLoading=false;render()});
   }
   function loadWeek(ws){
     var key=iso(ws);
-    if(calCache[key]||calLoading[key]||!calReady())return;
+    if(calLoading[key]||!calReady()||(calFail[key]&&Date.now()-calFail[key]<60000))return;
     calLoading[key]=1;
     var url='/calendars/'+encodeURIComponent(state.settings.schoolCal)+'/events?singleEvents=true&orderBy=startTime&maxResults=250&timeMin='+encodeURIComponent(ws.toISOString())+'&timeMax='+encodeURIComponent(addDays(ws,7).toISOString());
     gapi(url).then(function(j){
@@ -715,8 +758,8 @@ a.google-btn,a.icon-btn{text-decoration:none}
         (by[di]=by[di]||[]).push({title:r.subject?r.subject.name:(ev.summary||'Cours'),kind:r.kind,a:hm(a),b:hm(b),room:ev.location||'',color:r.subject?r.subject.color:'gray'});
       });
       if(created)save();
-      calCache[key]=by;cloud.calError='';
-    }).catch(function(e){calCache[key]={};cloud.calError=friendly(e)}).then(function(){delete calLoading[key];render()});
+      calCache[key]={by:by,at:Date.now()};saveCalCache();cloud.calError='';delete calFail[key];
+    }).catch(function(e){calFail[key]=Date.now();cloud.calError=friendly(e)}).then(function(){delete calLoading[key];render()});
   }
 
   function dueOf(h){return parse(h.date,h.time||'23:59')}
@@ -892,16 +935,18 @@ a.google-btn,a.icon-btn{text-decoration:none}
       else armedSub=id;
       render();
     }
-    else if(act==='signin'||act==='reconnect')signIn();
+    else if(act==='signin')signIn();
+    else if(act==='reconnect')renewToken();
     else if(act==='signout')signOut();
-    else if(act==='sync-now'){cloud.calError='';calCache={};loadCalendars();calSync().then(function(){render()})}
-    else if(act==='refresh-cal'){calCache={};render()}
+    else if(act==='sync-now'){cloud.calError='';resetCal();loadCalendars();calSync().then(function(){render()})}
+    else if(act==='refresh-cal'){resetCal();render()}
     else if(act==='import-subs'){cloud.importMsg='';importSubjects();render()}
   });
   document.addEventListener('change',function(e){
     var t=e.target;
     if(t.id==='hw-sub'){hwSub=t.value;render();return}
-    if(t.id==='set-cal'){state.settings.schoolCal=t.value;state.settings.imported='';importTried='';cloud.importMsg='';calCache={};save();render();return}
+    if(t.id==='set-gcid'){state.settings.gClientId=t.value.trim();gis=null;save();render();return}
+    if(t.id==='set-cal'){state.settings.schoolCal=t.value;state.settings.imported='';importTried='';cloud.importMsg='';resetCal();save();render();return}
     var sid=t.getAttribute&&t.getAttribute('data-sub');
     if(sid){
       var f=t.getAttribute('data-field');
