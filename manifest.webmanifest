@@ -1,6 +1,7 @@
 {
-  "name": "Hub Fac",
-  "short_name": "Hub Fac",
+  "id": "studia-app",
+  "name": "Studia",
+  "short_name": "Studia",
   "description": "Devoirs, absences, planning et notes de la fac au même endroit.",
   "lang": "fr",
   "start_url": "./index.html",
@@ -8,10 +9,25 @@
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",
-  "theme_color": "#1a63b8",
+  "theme_color": "#5B2A86",
   "icons": [
-    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-    {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }
