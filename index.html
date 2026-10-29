@@ -50,6 +50,13 @@
 .colordd summary::-webkit-details-marker{display:none}
 .colordd summary:hover{background:var(--bg-hover);color:var(--fg)}
 .colordd .pal{margin-top:8px}
+.more{border:1px dashed var(--line);border-radius:12px;padding:8px 12px}
+.more[open]{padding-bottom:12px}
+.more summary{cursor:pointer;color:var(--muted);font-size:13.5px;font-weight:600}
+.more>.form{margin-top:10px}
+.card-det{border-top:1px solid var(--line);padding-top:6px}
+.card-det .props{margin-top:8px}
+.card-det .actions{margin-top:8px}
 html,body{height:auto}
 body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -138,7 +145,7 @@ select.field,input.field,textarea.field{border:1px solid var(--line);background:
 .course.next{background:var(--accent-soft);border-radius:6px;border-bottom-color:transparent}
 
 /* Week */
-.week{display:grid;grid-template-columns:repeat(var(--n,5),minmax(0,1fr));gap:10px}
+.week{display:grid;grid-template-columns:var(--cols,repeat(var(--n,5),minmax(0,1fr)));gap:10px}
 .day{display:flex;flex-direction:column;gap:6px;min-width:0}
 .day-head{padding:2px 2px 6px;border-bottom:1px solid var(--line);font-weight:600;font-size:13.5px;display:flex;justify-content:space-between;gap:6px}
 .day-head span{font-family:var(--mono);font-weight:400;color:var(--muted);font-size:12px}
@@ -235,6 +242,7 @@ a.google-btn,a.icon-btn{text-decoration:none}
   .head-add.always{display:inline-flex}
   .cols{grid-template-columns:minmax(0,1fr)}
   .week{grid-template-columns:minmax(0,1fr)}
+  .day.emptywk{display:none}
   .row{grid-template-columns:auto minmax(0,1fr)}
   .row .side-cell{grid-column:2;flex-wrap:wrap}
   .course{grid-template-columns:84px minmax(0,1fr)}
@@ -703,7 +711,7 @@ a.google-btn,a.icon-btn{text-decoration:none}
     var n=7,all=[],loading=false;
     for(var i=0;i<7;i++){var ev=dayEvents(addDays(ws,i));if(ev===null)loading=true;all.push(ev||[]);}
     var shown={};all.forEach(function(evl,i){var d2=iso(addDays(ws,i));evl.forEach(function(e){state.homework.forEach(function(h){if(!h.done&&isLinked(h,e,d2))shown[h.id]=1})})});
-    var cols='';
+    var cols='',colw=[];
     for(var k=0;k<n;k++){
       var day=addDays(ws,k),di=iso(day),isToday=di===todayIso;
       var evs=all[k].map(function(e){
@@ -722,7 +730,8 @@ a.google-btn,a.icon-btn{text-decoration:none}
       var plans=planned.map(function(it){
         return '<div class="ev plan"><span class="t">À faire'+(it.planTime?' · '+it.planTime:'')+(it.dur?' · '+fmtDur(it.dur):'')+'</span><b>'+esc(it.title)+'</b><span class="t">'+esc(sub(it.h.sub).name)+'</span></div>';
       }).join('');
-      cols+='<div class="day'+(isToday?' today':'')+'"><div class="day-head">'+DAYS[k]+'<span>'+fmtShort.format(day)+'</span></div>'+(load?'<div class="load">Prévu : '+fmtDur(load)+'</div>':'')+evs+flags+plans+'</div>';
+      var narrow=k>=5&&!all[k].length&&!flags&&!plans;colw.push(narrow?'minmax(0,.45fr)':'minmax(0,1fr)');
+      cols+='<div class="day'+(isToday?' today':'')+(narrow?' emptywk':'')+'"><div class="day-head">'+(narrow?DAYS[k].slice(0,3)+'.':DAYS[k])+'<span>'+(narrow?String(day.getDate()):fmtShort.format(day))+'</span></div>'+(load?'<div class="load">Prévu : '+fmtDur(load)+'</div>':'')+evs+flags+plans+'</div>';
     }
     var subt=loading?'Chargement de ton calendrier…':(calNotice()||'Lu depuis ton calendrier de la fac dans Google Agenda.');
     var nHidden=Object.keys(state.evOver||{}).filter(function(k){return state.evOver[k].hide}).length;
@@ -733,10 +742,11 @@ a.google-btn,a.icon-btn{text-decoration:none}
       '<button class="icon-btn" data-act="week" data-v="1" aria-label="Semaine suivante">'+icon('right')+'</button>'+
       (weekOffset!==0?'<button class="btn" data-act="week" data-v="0">Aujourd\'hui</button>':'')+
       (calReady()?'<button class="icon-btn" data-act="refresh-cal" aria-label="Actualiser le calendrier">'+icon('refresh',17)+'</button>':'')+'</div>'+
-      '<div class="week" style="--n:'+n+'">'+cols+'</div>';
+      '<div class="week" style="--n:'+n+';--cols:'+colw.join(' ')+'">'+cols+'</div>';
   }
 
-  var armedSub='';
+  var armedSub='',openSubs={};
+  document.addEventListener('toggle',function(e){var d=e.target;if(d&&d.getAttribute&&d.getAttribute('data-sub-det'))openSubs[d.getAttribute('data-sub-det')]=d.open},true);
   var COLOR_NAMES={blue:'Bleu',purple:'Violet',green:'Vert',orange:'Orange',red:'Rouge',gray:'Gris'};
   function vSubjects(){
     var cards=state.subjects.map(function(s){
@@ -749,6 +759,11 @@ a.google-btn,a.icon-btn{text-decoration:none}
       var fld=function(k,label,ph){return '<label for="p-'+s.id+'-'+k+'">'+label+'</label><input id="p-'+s.id+'-'+k+'" data-sub="'+s.id+'" data-field="'+k+'" value="'+esc(s[k]||'')+'" placeholder="'+ph+'">'};
       return '<div class="card"><h3><span class="dot" style="background:'+hexOf(s.color)+'"></span>'+esc(s.name||'Sans nom')+'</h3>'+
         '<div class="stats"><span class="tag t-'+(hw?'orange':'gray')+'">'+hw+' devoir'+(hw>1?'s':'')+'</span><span class="tag t-'+(ab?'red':'gray')+'">'+ab+' à rattraper</span>'+(s.ctype?'<span class="tag t-gray">'+esc(s.ctype.replace('+',' + '))+'</span>':'')+'</div>'+
+        '<div class="actions">'+
+          (link?'<a class="btn" href="'+esc(s.drive)+'" target="_blank" rel="noopener">Ouvrir le dossier</a>':'<button class="btn" disabled>Ouvrir le dossier</button>')+
+          '<a class="btn" href="https://docs.google.com/document/create" target="_blank" rel="noopener">'+icon('plus',15)+'Nouvelle note</a>'+
+        '</div>'+
+        '<details class="colordd card-det" data-sub-det="'+s.id+'"'+(openSubs[s.id]?' open':'')+'><summary>Détails</summary>'+
         '<div class="props">'+
           fld('name','Nom','Nom de la matière')+
           '<label for="p-'+s.id+'-ctype">Cours</label><select class="field" id="p-'+s.id+'-ctype" data-sub="'+s.id+'" data-field="ctype">'+optList([['','—'],['CM','CM'],['TD','TD'],['CM+TD','CM + TD']],s.ctype||'')+'</select>'+
@@ -756,11 +771,8 @@ a.google-btn,a.icon-btn{text-decoration:none}
           fld('drive','Drive','Colle le lien du dossier')+
         '</div>'+
         pal+
-        '<div class="actions">'+
-          (link?'<a class="btn" href="'+esc(s.drive)+'" target="_blank" rel="noopener">Ouvrir le dossier</a>':'<button class="btn" disabled>Ouvrir le dossier</button>')+
-          '<a class="btn" href="https://docs.google.com/document/create" target="_blank" rel="noopener">'+icon('plus',15)+'Nouvelle note</a>'+
-          '<button class="btn" data-act="del-sub" data-id="'+s.id+'">'+(armedSub===s.id?'Confirmer la suppression':'Supprimer')+'</button>'+
-        '</div></div>';
+        '<div class="actions"><button class="btn" data-act="del-sub" data-id="'+s.id+'">'+(armedSub===s.id?'Confirmer la suppression':'Supprimer la matière')+'</button></div>'+
+        '</details></div>';
     }).join('');
     return sampleBanner()+head('Matières','Une page par matière : infos, lien Drive et accès direct aux notes.','Nouvelle matière','add-sub')+'<div class="cards">'+(cards||'<div class="empty">Aucune matière. Utilise « Nouvelle matière ».</div>')+'</div>';
   }
@@ -1032,7 +1044,7 @@ a.google-btn,a.icon-btn{text-decoration:none}
     });
     h+='<div class="nav-label">Matières</div>';
     state.subjects.forEach(function(s){
-      h+='<a class="nav-item" href="#matieres"><span class="dot" style="background:'+hexOf(s.color)+'"></span>'+esc(s.name)+'</a>';
+      h+='<a class="nav-item" href="#devoirs" data-act="filter-sub" data-id="'+s.id+'" title="Voir les devoirs de cette matière"><span class="dot" style="background:'+hexOf(s.color)+'"></span>'+esc(s.name)+'</a>';
     });
     var stl={local:'local',syncing:'synchro…',synced:'synchronisé',offline:'hors ligne',error:'erreur'}[cloud.status]||'';
     h+='<div class="side-foot"><a class="google-btn" href="#reglages"'+(view==='reglages'?' aria-current="page"':'')+'>'+icon('g',16)+'<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(cloud.user?esc(cloud.user.displayName||cloud.user.email||'Compte'):'Connexion Google')+'</span><small>'+(cloud.user?stl:'')+'</small></a>'+
@@ -1090,6 +1102,8 @@ a.google-btn,a.icon-btn{text-decoration:none}
     var v=h||{},tomorrow=iso(addDays(new Date(),1)),today=iso(new Date());
     var isHw=modalMode==='hw',durs=DURS.slice(),when=editId?(v.when||(v.date?(v.link?'course':'date'):'none')):'date';
     if(v.dur&&!durs.some(function(d){return d[0]===v.dur}))durs.push([v.dur,fmtDur(v.dur)]);
+    var moreOpen=!!(editId&&(v.dur||v.planDate||(v.steps&&v.steps.length)||(v.remind&&v.remind!=='eve')||v.asEvent)),
+        moreSum=(v.remind==='none'?'aucun rappel':(v.asEvent?'événement':'tâche')+' Google, rappel '+(REMIND[v.remind||'eve']||'').toLowerCase());
     var body=isHw?
       '<label>Titre<input class="field" id="f-title" required placeholder="Ex. Fiche de lecture" autocomplete="off" value="'+esc(v.title||'')+'"></label>'+
       '<div class="two"><label>Type<select class="field" id="f-kind">'+optList(KINDS,v.kind||'devoir')+'</select></label>'+
@@ -1100,8 +1114,9 @@ a.google-btn,a.icon-btn{text-decoration:none}
       '<label>Heure<input class="field" type="time" id="f-time" value="'+esc(v.time||'23:59')+'"></label></div></div>'+
       '<div id="w-course"'+(when==='course'?'':' hidden')+'><label>Cours<select class="field" id="f-slot"></select></label><p class="hint">La date limite est celle du cours, et le devoir apparaît sur ce créneau du Planning.</p></div>'+
       '<div id="w-none"'+(when==='none'?'':' hidden')+'><p class="hint">Rangé dans « Sans échéance ». Planifie-le avec « Je m\'y mets le » : une tâche Google est créée à cette date.</p></div>'+
-      '<div class="two"><label>Difficulté<select class="field" id="f-prio">'+optList([['low','Facile'],['mid','Moyen'],['high','Difficile']],v.prio||'mid')+'</select></label>'+
-      '<label>Durée visée<select class="field" id="f-dur">'+optList(durs,v.dur||0)+'</select></label></div>'+
+      '<label>Difficulté<select class="field" id="f-prio">'+optList([['low','Facile'],['mid','Moyen'],['high','Difficile']],v.prio||'mid')+'</select></label>'+
+      '<details class="more" id="more-opts"'+(moreOpen?' open':'')+'><summary>Plus d\'options · '+moreSum+'</summary><div class="form">'+
+      '<label>Durée visée<select class="field" id="f-dur">'+optList(durs,v.dur||0)+'</select></label>'+
       '<div class="two"><label>Je m\'y mets le<input class="field" type="date" id="f-pdate" value="'+esc(v.planDate||'')+'"></label>'+
       '<label>À<input class="field" type="time" id="f-ptime" value="'+esc(v.planTime||'')+'"></label></div>'+
       '<div id="f-steps">'+((v.steps||[]).map(stepRow).join(''))+'</div>'+
@@ -1110,7 +1125,7 @@ a.google-btn,a.icon-btn{text-decoration:none}
       '<p class="hint">Laisse « Je m\'y mets le » vide si tu n\'as pas encore décidé quand t\'y mettre. Le travail prévu apparaît dans le Planning.</p>'+
       '<div id="w-remind"'+(when==='none'?' hidden':'')+'><div class="two"><label>Rappel<select class="field" id="f-remind">'+optList([['eve','La veille'],['d3','3 jours avant'],['same','Le matin même'],['none','Aucun rappel']],v.remind||'eve')+'</select></label>'+
       '<label>Dans Google<select class="field" id="f-gmode">'+optList([['task','Tâche (rappel le matin)'],['event','Événement (heure précise)']],v.asEvent?'event':'task')+'</select></label></div>'+
-      '<p class="hint">Une fois connecté à Google : une tâche est créée avec un rappel le matin du jour choisi, ou un événement dans ton agenda principal à l\'heure limite avec une alerte.</p></div>':
+      '<p class="hint">Une fois connecté à Google : une tâche est créée avec un rappel le matin du jour choisi, ou un événement dans ton agenda principal à l\'heure limite avec une alerte.</p></div></div></details>':
       '<div class="two"><label>Matière<select class="field" id="f-sub">'+subjectOptions()+'</select></label>'+
       '<label>Date du cours manqué<input class="field" type="date" id="f-date" required value="'+today+'"></label></div>'+
       '<label>À récupérer<input class="field" id="f-what" required placeholder="Ex. Notes du cours et diapos" autocomplete="off"></label>'+
@@ -1224,6 +1239,7 @@ a.google-btn,a.icon-btn{text-decoration:none}
     else if(act==='toggle-hw'){state.homework.forEach(function(h){if(h.id===id){h.done=!h.done;(h.steps||[]).forEach(function(x){x.done=h.done})}});afterChange();render()}
     else if(act==='toggle-step'){state.homework.forEach(function(h){if(h.id===id){(h.steps||[]).forEach(function(x){if(x.id===val)x.done=!x.done});h.done=!!(h.steps&&h.steps.length&&h.steps.every(function(x){return x.done}))}});afterChange();render()}
     else if(act==='add-step'){var box=document.getElementById('f-steps');if(box){box.insertAdjacentHTML('beforeend',stepRow());var ins=box.querySelectorAll('.s-title');ins[ins.length-1].focus()}}
+    else if(act==='filter-sub'){hwSub=id;if(location.hash==='#devoirs')render()}
     else if(act==='sub-color'){state.subjects.forEach(function(x){if(x.id===id)x.color=val});save();render()}
     else if(act==='when'){
       var f=document.getElementById('f-when');if(f)f.value=val;
