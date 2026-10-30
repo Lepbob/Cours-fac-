@@ -802,14 +802,14 @@ a.google-btn,a.icon-btn{text-decoration:none}
           '<div><button class="btn" data-act="sync-now">'+icon('refresh',16)+'Synchroniser maintenant</button></div>';
       }
       html+='<div class="panel"><h2>Renouvellement automatique</h2><p class="hint">Google coupe l\'accès à l\'agenda au bout d\'une heure. Avec l\'identifiant client Web de ton projet, l\'appli le renouvelle toute seule au premier toucher après l\'ouverture.</p><div class="setrow"><label for="set-gcid">Identifiant client Web</label><input class="field" id="set-gcid" style="flex:1;min-width:200px" placeholder="123456-abc.apps.googleusercontent.com" value="'+esc(state.settings.gClientId||'')+'" autocomplete="off"></div></div>'+
-        '<div class="panel"><h2>Google Agenda</h2>'+body+(cloud.calError?'<div class="err">'+esc(cloud.calError)+'</div>':'')+'</div>';
+        '<div class="panel"><h2>Google Agenda</h2>'+body+(cloud.calError?'<div class="err">'+esc(cloud.calError)+'</div>':'')+'</div>'+backupPanel();
     }
     return html;
   }
 
   /* ---------- Firebase et Google Agenda ---------- */
   var FB_CONFIG={apiKey:"AIzaSyCt33gcJivvoXquByudlqu-mJ1C66uVGHw",authDomain:"app-fac-e6097.firebaseapp.com",projectId:"app-fac-e6097",storageBucket:"app-fac-e6097.firebasestorage.app",messagingSenderId:"64356787231",appId:"1:64356787231:web:ae288ae554f759ed5ae12a"};
-  var SCOPES=['https://www.googleapis.com/auth/calendar.events','https://www.googleapis.com/auth/calendar.readonly','https://www.googleapis.com/auth/tasks'];
+  var SCOPES=['https://www.googleapis.com/auth/calendar.events','https://www.googleapis.com/auth/calendar.readonly','https://www.googleapis.com/auth/tasks','https://www.googleapis.com/auth/drive.appdata'];
   var TOK_KEY='hubfac-tok';
   var cloud={user:null,authReady:false,status:'local',error:'',calError:'',calList:null,calLoading:false,token:null,tokenExp:0,unsub:null,timer:null,auth:null,db:null,ref:null};
   var CAL_KEY='hubfac-calcache';
@@ -894,7 +894,7 @@ a.google-btn,a.icon-btn{text-decoration:none}
     if(!cloud.auth)return;
     cloud.auth.signOut();clearToken();resetCal();cloud.calList=null;cloud.error='';cloud.calError='';
   }
-  function onTokenReady(){loadCalendars();calSync();render()}
+  function onTokenReady(){loadCalendars();calSync();maybeBackup();render()}
 
   function startSync(u){
     stopSync();
@@ -985,6 +985,77 @@ a.google-btn,a.icon-btn{text-decoration:none}
   function remindMinutes(h,due){
     var m=h.remind==='d3'?4320:h.remind==='same'?Math.round((due-parse(h.date,'08:00'))/6e4):1440;
     return m>0?m:60;
+  }
+  /* ---------- Sauvegarde externe (Google Drive, dossier caché de l'appli) ---------- */
+  var BK={busy:false,list:null,msg:'',armed:'',failedDay:''};
+  var BK_RE=/^studia-(\d{4}-\d{2}-\d{2})\.json$/;
+  function dapi(path,opt){
+    opt=opt||{};
+    var base=opt.upload?'https://www.googleapis.com/upload/drive/v3':'https://www.googleapis.com/drive/v3';
+    var hd={'Authorization':'Bearer '+cloud.token};Object.keys(opt.headers||{}).forEach(function(k){hd[k]=opt.headers[k]});
+    return fetch(base+path,{method:opt.method||'GET',headers:hd,body:opt.body}).then(function(r){
+      if(r.status===401){clearToken();var er=new Error('L\'accès à Google a expiré.');er.status=401;throw er}
+      if(r.status===204)return null;
+      return r.json().catch(function(){return {}}).then(function(j){
+        if(!r.ok){var er=new Error(r.status===403?'Sauvegarde Drive non autorisée : active l\'API Google Drive dans Google Cloud, ajoute le niveau d\'accès « drive.appdata », puis déconnecte-toi et reconnecte-toi.':((j.error&&j.error.message)||('Erreur '+r.status)));er.status=r.status;throw er}
+        return j;
+      });
+    });
+  }
+  function dsave(name,data,existingId){
+    var json=JSON.stringify(data);
+    if(existingId)return dapi('/files/'+encodeURIComponent(existingId)+'?uploadType=media',{upload:true,method:'PATCH',headers:{'Content-Type':'application/json'},body:json});
+    var bd='studia'+Date.now();
+    var body='--'+bd+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify({name:name,parents:['appDataFolder']})+'\r\n--'+bd+'\r\nContent-Type: application/json\r\n\r\n'+json+'\r\n--'+bd+'--';
+    return dapi('/files?uploadType=multipart',{upload:true,method:'POST',headers:{'Content-Type':'multipart/related; boundary='+bd},body:body});
+  }
+  function listBk(){return dapi('/files?spaces=appDataFolder&pageSize=100&fields=files(id,name,modifiedTime)&orderBy=name%20desc').then(function(j){return (j.files||[]).filter(function(f){return BK_RE.test(f.name)}).sort(function(a,b){return a.name<b.name?1:-1})})}
+  function driveBackup(force){
+    if(BK.busy||!cloud.user||!tokenOk())return Promise.resolve();
+    BK.busy=true;BK.msg='';
+    var day=iso(new Date()),name='studia-'+day+'.json';
+    return listBk().then(function(files){
+      var today=files.filter(function(f){return f.name===name})[0];
+      var p=(today&&!force)?Promise.resolve():dsave(name,state,today&&today.id);
+      return p.then(function(){
+        var all=files.filter(function(f){return f.name!==name});all.unshift({name:name});
+        all.sort(function(a,b){return a.name<b.name?1:-1});
+        return Promise.all(all.slice(7).filter(function(f){return f.id}).map(function(f){return dapi('/files/'+encodeURIComponent(f.id),{method:'DELETE'}).catch(function(){})}));
+      });
+    }).then(function(){
+      try{localStorage.setItem('studia-lastbackup',day)}catch(e){}
+      BK.list=null;BK.msg=force?'Sauvegarde effectuée.':'';
+    }).catch(function(e){BK.msg=friendly(e);BK.failedDay=day}).then(function(){BK.busy=false;softRender()});
+  }
+  function maybeBackup(){
+    var day=iso(new Date()),last='';try{last=localStorage.getItem('studia-lastbackup')||''}catch(e){}
+    if(last===day||BK.failedDay===day||BK.busy||state.sample||cloud.status!=='synced'||!cloud.user||!tokenOk())return;
+    driveBackup(false);
+  }
+  setInterval(maybeBackup,60000);
+  function restoreBackup(id){
+    if(BK.busy||!tokenOk())return;
+    BK.busy=true;BK.msg='';
+    dapi('/files/'+encodeURIComponent(id)+'?alt=media').then(function(obj){
+      if(!obj||!obj.subjects||!obj.homework)throw new Error('Fichier de sauvegarde invalide.');
+      state=normalize(obj);state.sample=false;state.updatedAt=Date.now();
+      persistLocal();cloudPush();resetCal();BK.msg='Sauvegarde restaurée.';
+    }).catch(function(e){BK.msg=friendly(e)}).then(function(){BK.busy=false;render()});
+  }
+  function backupPanel(){
+    var last='';try{last=localStorage.getItem('studia-lastbackup')||''}catch(e){}
+    var h='<div class="panel"><h2>Sauvegarde externe</h2><p class="hint">Une copie de toutes tes données est enregistrée chaque jour dans un dossier caché de ton Google Drive (les 7 dernières sont gardées). Elle n\'apparaît pas dans tes fichiers.</p>';
+    if(!tokenOk())return h+'<p class="hint">Reconnecte Google pour utiliser la sauvegarde.</p></div>';
+    h+=(last?'<p class="hint">Dernière sauvegarde : '+esc(fmtDay.format(parse(last)))+'</p>':'')+
+      '<div class="setrow"><button class="btn" data-act="bk-now"'+(BK.busy?' disabled':'')+'>Sauvegarder maintenant</button><button class="btn" data-act="bk-list"'+(BK.busy?' disabled':'')+'>Voir les sauvegardes</button></div>';
+    if(BK.list){
+      h+=BK.list.length?BK.list.map(function(f){
+        var d=f.name.match(BK_RE)[1];
+        return '<div class="setrow"><span class="mono">'+esc(fmtDay.format(parse(d)))+'</span><button class="btn" data-act="bk-restore" data-id="'+esc(f.id)+'">'+(BK.armed===f.id?'Confirmer : remplacer mes données':'Restaurer')+'</button></div>';
+      }).join(''):'<p class="hint">Aucune sauvegarde pour le moment.</p>';
+      if(BK.armed)h+='<p class="hint">La restauration remplace tes devoirs, absences et matières actuels par cette sauvegarde, sur tous tes appareils.</p>';
+    }
+    return h+(BK.msg?'<div class="'+(/effectu|restaur/i.test(BK.msg)?'hint':'err')+'">'+esc(BK.msg)+'</div>':'')+'</div>';
   }
   function calSync(){
     if(syncing||!cloud.user||!tokenOk())return Promise.resolve();
@@ -1285,6 +1356,9 @@ a.google-btn,a.icon-btn{text-decoration:none}
     else if(act==='signin')signIn();
     else if(act==='reconnect')renewToken();
     else if(act==='signout')signOut();
+    else if(act==='bk-now'){BK.failedDay='';driveBackup(true).then(render)}
+    else if(act==='bk-list'){BK.msg='';BK.armed='';listBk().then(function(l){BK.list=l}).catch(function(e){BK.msg=friendly(e)}).then(render)}
+    else if(act==='bk-restore'){if(BK.armed===id){BK.armed='';restoreBackup(id)}else{BK.armed=id;render()}}
     else if(act==='sync-now'){cloud.calError='';resetCal();loadCalendars();calSync().then(function(){render()})}
     else if(act==='refresh-cal'){resetCal();render()}
     else if(act==='import-subs'){cloud.importMsg='';importSubjects();render()}
