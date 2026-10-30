@@ -153,8 +153,8 @@ select.field,input.field,textarea.field{border:1px solid var(--line);background:
 .ev{position:relative;border-radius:12px;padding:7px 9px;font-size:13px;min-width:0;display:flex;flex-direction:column;gap:1px}
 .ev b{font-weight:600;overflow-wrap:anywhere}
 .ev .t{font-family:var(--mono);font-size:11.5px;opacity:.85}
-.ev.flag{border:1px dashed currentColor;background:none}
-.ev.plan{border:1.5px dashed var(--accent);background:var(--accent-soft);color:var(--fg)}
+.ev.flag{border:1.5px dashed var(--s);border-left:5px solid var(--s);background:color-mix(in srgb,var(--s) 16%,var(--bg));color:var(--fg)}
+.ev.plan{border:1.5px dashed var(--s);background:color-mix(in srgb,var(--s) 12%,var(--bg));color:var(--fg)}
 .evedit{position:absolute;top:4px;right:4px;width:24px;height:24px;border:0;border-radius:8px;background:transparent;color:inherit;opacity:.55;display:grid;place-items:center;cursor:pointer;padding:0}
 .evedit:hover,.evedit:focus-visible{opacity:1;background:rgba(0,0,0,.08)}
 .ev .lk{margin-top:4px;padding:4px 7px;border-radius:8px;background:var(--bg);color:var(--fg);font-size:12px;border:1px solid var(--line)}
@@ -185,7 +185,7 @@ select.field,input.field,textarea.field{border:1px solid var(--line);background:
 .row.hw .band{align-self:stretch;width:5px;margin:-10px 0;background:var(--p)}
 .row.hw.done{opacity:.6}
 .row.hw.imp{border:3px solid var(--alert)}
-.ev.flag.imp{border:3px solid var(--alert);color:var(--fg);background:color-mix(in srgb,var(--alert) 12%,var(--bg))}
+.ev.flag.imp{border:3px solid var(--alert);border-left:5px solid var(--s)}
 .ev .lk.imp{border:2px solid var(--alert)}
 .grp-h{display:flex;align-items:center;gap:8px}
 .grp-h i{width:10px;height:10px;border-radius:3px;flex:none}
@@ -762,8 +762,8 @@ a.google-btn,a.icon-btn{text-decoration:none}
     for(var i=0;i<7;i++){var ev=dayEvents(addDays(ws,i));if(ev===null)loading=true;all.push(ev||[]);}
     var shown={};all.forEach(function(evl,i){var d2=iso(addDays(ws,i));evl.forEach(function(e){state.homework.forEach(function(h){if(!h.done&&isLinked(h,e,d2))shown[h.id]=1})})});
     var toMin=function(t){var q=String(t||'0:0').split(':');return (+q[0])*60+(+q[1]||0)};
-    var flagHtml=function(h){return '<div class="ev flag t-red'+((h.kind==='cc'||h.kind==='exam')?' imp':'')+'" title="'+esc(h.title)+'"><span class="t">'+(KIND_FLAG[h.kind]||'À rendre')+' '+esc(h.time||'')+'</span><b>'+esc(h.title)+'</b></div>'};
-    var planHtml=function(it,timed){return '<div class="ev plan" title="'+esc(it.title)+'"><span class="t">À faire'+(it.planTime?' · '+it.planTime:'')+(it.dur?' · '+fmtDur(it.dur):'')+'</span><b>'+esc(it.title)+'</b>'+(timed?'':'<span class="t">'+esc(sub(it.h.sub).name)+'</span>')+'</div>'};
+    var flagHtml=function(h){return '<div class="ev flag'+((h.kind==='cc'||h.kind==='exam')?' imp':'')+'" style="--s:'+hexOf(sub(h.sub).color)+'" title="'+esc(h.title)+'"><span class="t">'+(KIND_FLAG[h.kind]||'À rendre')+' '+esc(h.time||'')+'</span><b>'+esc(h.title)+'</b></div>'};
+    var planHtml=function(it,timed){return '<div class="ev plan" style="--s:'+hexOf(sub(it.h.sub).color)+'" title="'+esc(it.title)+'"><span class="t">À faire'+(it.planTime?' · '+it.planTime:'')+(it.dur?' · '+fmtDur(it.dur):'')+'</span><b>'+esc(it.title)+'</b>'+(timed?'':'<span class="t">'+esc(sub(it.h.sub).name)+'</span>')+'</div>'};
     var evInner=function(e,di,compact){
       var hl=state.homework.filter(function(h){return !h.done&&isLinked(h,e,di)}),imp=hl.some(function(h){return h.kind==='cc'||h.kind==='exam'}),lk='';
       if(hl.length){
@@ -827,7 +827,7 @@ a.google-btn,a.icon-btn{text-decoration:none}
       });
       timedPlans.forEach(function(it){
         var s0=toMin(it.planTime),d0=it.dur||60;
-        blocks+='<div class="ev plan" style="top:'+yOf(s0)+'px;height:'+(yOf(s0+d0)-yOf(s0)-2)+'px;left:12%;width:calc(88% - 2px)"><span class="t">À faire · '+it.planTime+'</span><b>'+esc(it.title)+'</b></div>';
+        blocks+='<div class="ev plan" style="--s:'+hexOf(sub(it.h.sub).color)+';top:'+yOf(s0)+'px;height:'+(yOf(s0+d0)-yOf(s0)-2)+'px;left:12%;width:calc(88% - 2px)"><span class="t">À faire · '+it.planTime+'</span><b>'+esc(it.title)+'</b></div>';
       });
       if(isToday&&weekOffset===0){var nm=now.getHours()*60+now.getMinutes();if(nm>=t0&&nm<=t1)blocks+='<div class="nowline" style="top:'+yOf(nm)+'px"></div>'}
       tls+='<div class="'+cls+'"><div class="tl" style="height:'+TH+'px">'+blocks+'</div></div>';
